@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
-import time, queue, socket, sqlite3, datetime, threading
+import time, queue, socket, sqlite3, datetime, threading, io, pygame, rpc, serial, serial.tools.list_ports, sys, cv2, struct
+from djitellopy import Tello as Tello2
+from matplotlib import cm
+import numpy as np
+from PIL import Image
 debug = True
 
 class Tello:
@@ -13,7 +17,7 @@ class Tello:
         self.MAX_TIME_OUT = 15         # It must be longer than 10 sec, give time to "take off" command.
         self.MAX_RETRY = 2
         self.state = {}
-        threading.Thread(target=self.flight_logger, kwargs={"debug":debug}, daemon=True).start()
+        # threading.Thread(target=self.flight_logger, kwargs={"debug":debug}, daemon=True).start()
         threading.Thread(target=self.receiver     , kwargs={"debug":debug}, daemon=True).start()
         threading.Thread(target=self.sender       , kwargs={"debug":debug}, daemon=True).start()
         threading.Thread(target=self.update_state , daemon=True).start()
@@ -91,14 +95,15 @@ class Tello:
             state.pop()
             self.state.update(dict([s.split(':') for s in state]))
 
-tello = Tello()
+# tello = Tello()
+
 
 import cv2
 
 class VIDEO:
     def __init__(self):
-        tello.command('command')
-        tello.command('streamon')
+        tello2.connect()
+        tello2.stream_on
         self.void_frame = b''
         self.h264_frame = self.void_frame
         self.jpeg_frame = self.void_frame
@@ -177,6 +182,11 @@ def mjpg():
                       'Pragma':'no-cache', 'Cache-Control':'no-cache, private',})
     return r
 
+@app.route('/display/<filename>')
+def display_video(filename):
+	#print('display_video filename: ' + filename)
+	return redirect(url_for('static', filename='uploads/' + filename), code=301)
+
 @app.route('/')
 def hello_world():
     return 'Hello, World!'
@@ -185,20 +195,22 @@ def web():
     app.run('127.0.0.1', 9999)
 
 threading.Thread(target=web , daemon=True).start() 
-time.sleep(5) 
-tello.command('takeoff'   )
 
-tello.command('forward 50')
-tello.command('cw 90'     )
-tello.command('forward 50')
-tello.command('cw 90'     )
-tello.command('forward 50')
-tello.command('cw 90'     )
-tello.command('forward 50')
-tello.command('cw 90'     )
 
-tello.command('land'      ) 
-time.sleep(43) 
-tello.save_flight_data()
-tello.stop_flight_logger()
-time.sleep(3)
+interface = rpc.rpc_network_master(slave_ip="10.0.0.18", my_ip="", port=0x1DBA)
+tello2 = Tello2()
+tello2.connect()
+def reset():
+    global interface
+    interface = rpc.rpc_network_master(slave_ip="10.0.0.18", my_ip="", port=0x1DBA)
+while(True):
+    print("test")
+
+    sys.stdout.flush()
+    result = interface.call("heatcheck", "sensor.RGB565,sensor.QQVGA")
+    if result is not None:
+        print("heat detected")
+        tello2.takeoff()
+        time.sleep(5)
+        tello2.land()
+        reset()
